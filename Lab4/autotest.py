@@ -5,6 +5,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.service import Service
 
 
 @pytest.fixture
@@ -19,9 +20,11 @@ def driver():
     
     # Явно указываем путь к Chromium
     options.binary_location = '/usr/bin/chromium'
+
+    # Явно указываем путь к chromedriver через Service ← ДОБАВИТЬ
+    service = Service('/usr/bin/chromedriver')
     
-    # Используем Chrome driver с Chromium браузером
-    driver = webdriver.Chrome(options=options)
+    driver = webdriver.Chrome(service=service, options=options)
     yield driver
     driver.quit()
 
