@@ -2,7 +2,7 @@ from locust import HttpUser, task, between
 
 
 class OpenBMCUser(HttpUser):
-    host = "https://localhost:2443"
+    host = "https://127.0.0.1:2443"
 
     @task(1)
     def get_system_info(self):

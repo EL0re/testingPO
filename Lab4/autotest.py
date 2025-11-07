@@ -14,6 +14,8 @@ def driver():
     options.add_argument('--headless')  # Выключаем визуальный режим
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--allow-insecure-localhost')
+    options.add_argument('--ignore-ssl-errors=yes')     
     driver = webdriver.Chrome(options=options)
     yield driver
     driver.quit()
@@ -21,7 +23,7 @@ def driver():
 
 def test_login(driver):
     wait = WebDriverWait(driver, 10)
-    driver.get("https://localhost:2443/login")
+    driver.get("https://127.0.0.1:2443/login")
 
     username_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
     password_field = wait.until(EC.presence_of_element_located((By.ID, "password")))
@@ -36,7 +38,7 @@ def test_login(driver):
 
 def test_invalid_login(driver):
     wait = WebDriverWait(driver, 10)
-    driver.get("https://localhost:2443/login")
+    driver.get("https://127.0.0.1:2443/login")
 
     username_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
     password_field = wait.until(EC.presence_of_element_located((By.ID, "password")))
@@ -50,7 +52,7 @@ def test_invalid_login(driver):
 
 def test_login_block(driver):
     wait = WebDriverWait(driver, 10)
-    driver.get("https://localhost:2443/#/login")
+    driver.get("https://127.0.0.1:2443/#/login")
 
     for _ in range(10):
         username_field = wait.until(EC.presence_of_element_located((By.ID, "username")))
