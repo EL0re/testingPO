@@ -49,84 +49,25 @@ pipeline
                 '''
             }
         }
-        stage('Test Connection') {
+        stage('Debug Tests') {
             steps {
-                echo 'Testing detailed connection to QEMU web interface...'
-                sh '''
-                    echo "=== Detailed Web Interface Test ==="
-                    # Тестируем базовый доступ
-                    curl -k -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://127.0.0.1:2443/ || echo "Curl failed"
-                    
-                    # Тестируем конкретно страницу логина
-                    echo "=== Testing login page ==="
-                    curl -k -s https://127.0.0.1:2443/login | head -5 || echo "Login page not accessible"
-                    
-                    # Тестируем Redfish API
-                    echo "=== Testing Redfish API ==="
-                    curl -k -u "root:0penBmc" https://127.0.0.1:2443/redfish/v1/ || echo "Redfish API failed"
-                    
-                    echo "=== Python connectivity test ==="
-                    python3 -c "
-        import requests
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-        try:
-            # Test basic connection
-            response = requests.get('https://127.0.0.1:2443', verify=False, timeout=10)
-            print(f'Basic connection - Status: {response.status_code}')
-            
-            # Test login page
-            response = requests.get('https://127.0.0.1:2443/login', verify=False, timeout=10)
-            print(f'Login page - Status: {response.status_code}')
-            
-            # Test Redfish API
-            response = requests.get('https://127.0.0.1:2443/redfish/v1', verify=False, timeout=10, auth=('root', '0penBmc'))
-            print(f'Redfish API - Status: {response.status_code}')
-            
-        except Exception as e:
-            print(f'Error: {e}')
-            import traceback
-            traceback.print_exc()
-        "
-                '''
-            }
-        }
-        stage('Auto') {
-            steps {
-                echo 'Stage Auto: Installing python3 and test dependencies'
-                sh 'apt install -y python3 python3-pytest python3-selenium python3-requests'
-                
-                echo 'Stage Auto: Running Selenium autotests with detailed output'
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    dir('../Lab4') {
-                        sh '''
-                            echo "=== Current directory ==="
-                            pwd
-                            ls -la
-                            
-                            echo "=== Running Python connectivity test ==="
-                            python3 -c "
-        import requests
-        import urllib3
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-        try:
-            response = requests.get('https://127.0.0.1:2443/login', verify=False, timeout=10)
-            print(f'Login page status: {response.status_code}')
-            print(f'Response headers: {dict(response.headers)}')
-            print('✅ Web interface is accessible')
-        except Exception as e:
-            print(f'❌ Error accessing web interface: {e}')
-            import traceback
-            traceback.print_exc()
-        "
-
-                            echo "=== Running Selenium test with debug ==="
-                            python3 -c "
+                echo 'Debugging why tests fail...'
+                dir('../Lab4') {
+                    sh '''
+                        echo "=== Installing Chrome Driver ==="
+                        apt install -y wget unzip
+                        wget -q https://storage.googleapis.com/chrome-for-testing-public/122.0.6261.69/linux64/chromedriver-linux64.zip
+                        unzip -q chromedriver-linux64.zip
+                        mv chrome-for-testing/chromedriver-linux64/chromedriver /usr/local/bin/
+                        chmod +x /usr/local/bin/chromedriver
+                        
+                        echo "=== Testing Chrome Driver ==="
+                        chromedriver --version || echo "Chrome driver not working"
+                        
+                        echo "=== Simple Selenium Test ==="
+                        python3 -c "
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
-        import time
 
         options = Options()
         options.add_argument('--ignore-certificate-errors')
@@ -135,40 +76,80 @@ pipeline
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
 
-        print('Starting Chrome driver...')
-        driver = webdriver.Chrome(options=options)
-
+        print('Testing Chrome driver...')
         try:
+            driver = webdriver.Chrome(options=options)
+            print('Chrome driver started successfully')
+            
             print('Navigating to login page...')
             driver.get('https://127.0.0.1:2443/login')
+            print(f'Page loaded: {driver.title}')
             print(f'Current URL: {driver.current_url}')
-            print(f'Page title: {driver.title}')
-            print(f'Page source length: {len(driver.page_source)}')
             
-            # Check for login form elements
-            from selenium.webdriver.common.by import By
-            elements = driver.find_elements(By.TAG_NAME, 'input')
-            print(f'Found {len(elements)} input elements')
-            for elem in elements:
-                print(f'  Input: id={elem.get_attribute(\"id\")}, type={elem.get_attribute(\"type\")}')
-                
-            print('✅ Selenium can access the page')
+            # Check if page contains login form
+            page_source = driver.page_source
+            if 'username' in page_source or 'password' in page_source or 'login' in page_source.lower():
+                print('✅ Login form elements found')
+            else:
+                print('❌ Login form not found')
+                print(f'Page source snippet: {page_source[:500]}')
+            
+            driver.quit()
+            print('✅ Selenium test passed')
             
         except Exception as e:
             print(f'❌ Selenium error: {e}')
             import traceback
             traceback.print_exc()
-        finally:
-            driver.quit()
-            print('Chrome driver closed')
         "
+                    '''
+                }
+                
+                dir('../Lab6') {
+                    sh '''
+                        echo "=== Simple Locust Test ==="
+                        python3 -c "
+        import requests
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-                            echo "=== Running actual pytest ==="
-                            # Запускаем один тест для диагностики
-                            python3 -m pytest -v test_login.py::test_login -s > autotest_results.txt 2>&1 || echo "Test finished with exit code: $?"
-                            echo "=== Pytest output ==="
-                            cat autotest_results.txt
-                        '''
+        try:
+            # Test the exact endpoint used in Locust tests
+            response = requests.get('https://127.0.0.1:2443/redfish/v1/Systems/system', 
+                                verify=False, timeout=10, auth=('root', '0penBmc'))
+            print(f'Systems endpoint status: {response.status_code}')
+            
+            if response.status_code == 200:
+                data = response.json()
+                print(f'System ID: {data.get(\\\"Id\\\", \\\"Not found\\\")}')
+                print(f'PowerState: {data.get(\\\"PowerState\\\", \\\"Not found\\\")}')
+                print('✅ Redfish Systems endpoint works')
+            else:
+                print(f'❌ Redfish Systems endpoint failed: {response.status_code}')
+                print(f'Response: {response.text[:200]}')
+                
+        except Exception as e:
+            print(f'❌ Error: {e}')
+            import traceback
+            traceback.print_exc()
+        "
+                    '''
+                }
+            }
+        }
+        stage('Auto') 
+        {
+            steps 
+            {
+                echo 'Stage Auto: Installing python3 and test dependencies'
+                sh 'apt install -y python3 python3-pytest python3-selenium'
+                
+                echo 'Stage Auto: Running Selenium autotests'
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') 
+                {
+                    dir('../Lab4') {
+                        sh 'ls'
+                        sh 'python3 -m pytest -v autotests.py > autotest_results.txt 2>&1'
                         archiveArtifacts 'autotest_results.txt'
                     }
                 }
