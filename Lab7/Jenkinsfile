@@ -11,8 +11,8 @@ pipeline
                 sh 'rm -rf romulus romulus.zip'
                 
                 echo 'Stage Qemu: Updating packages and installing dependencies'
-                sh 'sudo apt update'
-                sh 'sudo apt install -y qemu-system wget unzip expect'
+                sh 'apt update'
+                sh 'apt install -y qemu-system wget unzip expect'
                 
                 echo 'Stage Qemu: Downloading romulus.zip'
                 sh 'wget https://jenkins.openbmc.org/job/ci-openbmc/lastSuccessfulBuild/distro=ubuntu,label=docker-builder,target=romulus/artifact/openbmc/build/tmp/deploy/images/romulus/*zip*/romulus.zip'
@@ -41,7 +41,7 @@ pipeline
             steps 
             {
                 echo 'Stage Auto: Installing python3 and test dependencies'
-                sh 'sudo apt install -y python3 python3-pytest python3-selenium'
+                sh 'apt install -y python3 python3-pytest python3-selenium'
                 
                 echo 'Stage Auto: Running Selenium autotests'
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') 
@@ -59,7 +59,7 @@ pipeline
             steps 
             {
                 echo 'Stage Locust: Installing Locust load testing tool'
-                sh 'sudo apt install -y python3 locust'
+                sh 'apt install -y python3 locust'
                 
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') 
                 {
