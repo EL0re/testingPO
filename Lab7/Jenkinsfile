@@ -1,0 +1,111 @@
+pipeline 
+{
+    agent any
+    
+    stages 
+    {
+        stage('Build Custom Jenkins Agent Image') 
+        {
+            steps 
+            {
+                sh 'docker build -t jenkins-qemu-agent:latest -f Lab7/Dockerfile .'
+                echo 'Custom Jenkins agent image built successfully'
+            }
+        }
+
+        stage('Run Tests Using Custom Agent') 
+        {
+            agent 
+            {
+                docker 
+                {
+                    image 'jenkins-qemu-agent:latest'
+                    args '-u root:root' 
+                }
+            }
+            stages 
+            {
+                stage('Start QEMU') 
+                {
+                    steps 
+                    {
+                        echo 'Starting QEMU emulator'
+                        sh '''
+                        rm -rf romulus romulus.zip
+                        wget https://jenkins.openbmc.org/job/ci-openbmc/lastSuccessfulBuild/distro=ubuntu,label=docker-builder,target=romulus/artifact/openbmc/build/tmp/deploy/images/romulus/*zip*/romulus.zip
+                        unzip romulus.zip
+                        LATEST_MTD=$(ls romulus/obmc-phosphor-image-romulus-*.static.mtd | sort -V | tail -1)
+                        expect -c "
+                        log_file -a qemu_result.txt
+                        spawn qemu-system-arm -m 256 -M romulus-bmc -nographic -drive file=$LATEST_MTD,format=raw,if=mtd -net nic -net user,hostfwd=:2222-:22,hostfwd=:2443-:443,hostname=qemu
+                        sleep 300
+                        send \"root\r\"
+                        sleep 4
+                        send \"0penBmc\r\"
+                        expect \"root@romulus:\"
+                        interact" &
+                        echo $! > qemu.pid
+                        '''
+                        echo 'QEMU emulator started'
+                    }
+                }
+
+                stage('Run Autotests') 
+                {
+                    steps 
+                    {
+                        echo 'Running automatic Selenium tests'
+                        dir('../Lab4') 
+                        {
+
+                            sh 'pytest autotest.py > autotest_results.txt 2>&1'
+
+                            archiveArtifacts 'autotest_results.txt'
+                        }
+                        echo 'Automatic Selenium tests finished'
+                    }
+                }
+
+                stage('Run Load Tests') 
+                {
+                    steps 
+                    {
+                        echo 'Running load tests with Locust'
+                        dir('../Lab6') 
+                        {
+                            
+                            sh 'locust -f locustfile.py --headless -u 50 -r 5 --run-time 3m > locust_results.txt 2>&1'
+                            
+                            archiveArtifacts 'locust_results.txt'
+                        }
+                        echo 'Load tests finished'
+                    }
+                }
+
+                stage('Stop QEMU') 
+                {
+                    steps 
+                    {
+                        echo 'Stopping QEMU emulator'
+                        sh '''
+                        if [ -f qemu.pid ]; then
+                            kill $(cat qemu.pid) || true
+                            rm qemu.pid
+                        fi
+                        '''
+                        echo 'QEMU emulator stopped'
+                    }
+                }
+            }
+        }
+    }
+    post 
+    {
+        always 
+        {
+            
+            archiveArtifacts artifacts: '**/*.txt', fingerprint: true
+            echo 'Pipeline finished'
+        }
+    }
+}
