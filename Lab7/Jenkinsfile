@@ -10,8 +10,12 @@ pipeline
                 echo 'Stage Qemu: Cleaning and preparing environment'
                 sh 'rm -rf romulus romulus.zip'
                 
-                echo 'Stage Qemu: Updating packages and installing dependencies'
+                // echo 'Stage Qemu: Updating packages and installing dependencies'
                 sh 'apt update'
+                sh 'apt install -y qemu-system'
+                sh 'apt install -y wget'
+                sh 'apt install -y unzip'
+                sh 'apt install -y expect'
                 sh 'apt install -y qemu-system wget unzip expect'
                 
                 echo 'Stage Qemu: Downloading romulus.zip'
