@@ -54,6 +54,7 @@ pipeline
             steps 
             {
                 echo 'Stage Auto: Installing dependencies including ChromeDriver'
+                
                 sh '''
                     apt install -y python3 python3-pytest python3-selenium
                     
