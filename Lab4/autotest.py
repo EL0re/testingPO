@@ -11,11 +11,16 @@ from selenium.webdriver.common.keys import Keys
 def driver():
     options = Options()
     options.add_argument('--ignore-certificate-errors')
-    options.add_argument('--headless')  # Выключаем визуальный режим
+    options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--allow-insecure-localhost')
-    options.add_argument('--ignore-ssl-errors=yes')     
+    options.add_argument('--ignore-ssl-errors=yes')
+    
+    # Явно указываем путь к Chromium
+    options.binary_location = '/usr/bin/chromium'
+    
+    # Используем Chrome driver с Chromium браузером
     driver = webdriver.Chrome(options=options)
     yield driver
     driver.quit()
