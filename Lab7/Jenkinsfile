@@ -49,6 +49,46 @@ pipeline
                 '''
             }
         }
+        stage('Diagnostics') {
+            steps {
+                echo 'Running comprehensive diagnostics...'
+                sh '''
+                    echo "=== QEMU Process Check ==="
+                    if [ -f "qemu.pid" ]; then
+                        QEMU_PID=$(cat qemu.pid)
+                        echo "QEMU PID: $QEMU_PID"
+                        ps -p $QEMU_PID && echo "✅ QEMU process is running" || echo "❌ QEMU process NOT found"
+                    else
+                        echo "❌ qemu.pid file not found"
+                    fi
+                    
+                    echo "=== Network Port Check ==="
+                    echo "Checking port 2443 (HTTPS):"
+                    netstat -tulpn | grep :2443 || echo "Port 2443 not found in netstat"
+                    nc -zv 127.0.0.1 2443 && echo "✅ Port 2443 is open" || echo "❌ Port 2443 is closed"
+                    
+                    echo "=== QEMU Log Check ==="
+                    if [ -f "qemu_output.log" ]; then
+                        echo "QEMU log size: $(wc -l qemu_output.log)"
+                        echo "=== Last 50 lines of QEMU log ==="
+                        tail -50 qemu_output.log
+                        echo "=== Checking for errors in QEMU log ==="
+                        grep -i "error\\|fail\\|panic" qemu_output.log || echo "No obvious errors found"
+                    else
+                        echo "❌ qemu_output.log not found"
+                    fi
+                    
+                    echo "=== Web Interface Test ==="
+                    echo "Testing HTTPS connection to QEMU..."
+                    timeout 30 curl -k -v https://127.0.0.1:2443 2>&1 | head -20 || echo "Curl failed"
+                    
+                    echo "=== Disk Space Check ==="
+                    df -h
+                    echo "=== Memory Check ==="
+                    free -h
+                '''
+            }
+        }
         stage('Auto') 
         {
             steps 
