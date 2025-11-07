@@ -49,21 +49,38 @@ pipeline
                 '''
             }
         }
-        stage('Auto') {
-            steps {
+        stage('Auto') 
+        {
+            steps 
+            {
+                echo 'Stage Auto: Installing dependencies including ChromeDriver'
+                sh '''
+                    apt install -y python3 python3-pytest python3-selenium
+                    
+                    apt install -y wget unzip
+                    # Скачиваем ChromeDriver совместимый с установленным Chromium
+                    CHROMIUM_VERSION=$(chromium --version | grep -oP '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+                    echo "Chromium version: $CHROMIUM_VERSION"
+                    
+                    wget -q https://storage.googleapis.com/chrome-for-testing-public/122.0.6261.69/linux64/chromedriver-linux64.zip
+                    unzip -q chromedriver-linux64.zip
+                    mv chromedriver-linux64/chromedriver /usr/local/bin/
+                    chmod +x /usr/local/bin/chromedriver
+                    
+                    chromedriver --version || echo "ChromeDriver not working"
+                '''
+                
                 echo 'Stage Auto: Running Selenium autotests'
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     sh '''
-                        echo "=== Running Auto tests with full output ==="
                         cd Lab4
-                        python3 -m pytest -v autotest.py -s --tb=long > ../autotest_results.txt 2>&1 || echo "Tests finished with exit code: $?"
-                        echo "=== Full test output ==="
+                        python3 -m pytest -v autotest.py --tb=short > ../autotest_results.txt 2>&1 || echo "Tests finished"
                         cat ../autotest_results.txt
                     '''
                     archiveArtifacts 'autotest_results.txt'
                 }
             }
-        }
+}
 
         stage('Locust') {
             steps {
