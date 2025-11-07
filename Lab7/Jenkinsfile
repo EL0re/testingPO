@@ -54,12 +54,9 @@ pipeline
                 echo 'Debugging why tests fail...'
                 dir('../Lab4') {
                     sh '''
-                        echo "=== Installing Chrome Driver ==="
-                        apt install -y wget unzip
-                        wget -q https://storage.googleapis.com/chrome-for-testing-public/122.0.6261.69/linux64/chromedriver-linux64.zip
-                        unzip -q chromedriver-linux64.zip
-                        mv chrome-for-testing/chromedriver-linux64/chromedriver /usr/local/bin/
-                        chmod +x /usr/local/bin/chromedriver
+                        echo "=== Installing Chrome Driver (simplified) ==="
+                        # Устанавливаем chromedriver из репозитория
+                        apt update && apt install -y chromium-driver chromium
                         
                         echo "=== Testing Chrome Driver ==="
                         chromedriver --version || echo "Chrome driver not working"
@@ -68,6 +65,8 @@ pipeline
                         python3 -c "
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.common.by import By
+        import time
 
         options = Options()
         options.add_argument('--ignore-certificate-errors')
@@ -75,27 +74,64 @@ pipeline
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
         options.add_argument('--disable-gpu')
+        options.binary_location = '/usr/bin/chromium'
 
         print('Testing Chrome driver...')
         try:
             driver = webdriver.Chrome(options=options)
-            print('Chrome driver started successfully')
+            print('✅ Chrome driver started successfully')
             
             print('Navigating to login page...')
             driver.get('https://127.0.0.1:2443/login')
-            print(f'Page loaded: {driver.title}')
+            print(f'Page title: {driver.title}')
             print(f'Current URL: {driver.current_url}')
             
-            # Check if page contains login form
-            page_source = driver.page_source
-            if 'username' in page_source or 'password' in page_source or 'login' in page_source.lower():
+            # Делаем скриншот для диагностики
+            driver.save_screenshot('debug_login_page.png')
+            print('Screenshot saved as debug_login_page.png')
+            
+            # Ищем элементы логина
+            print('Looking for login form elements...')
+            inputs = driver.find_elements(By.TAG_NAME, 'input')
+            print(f'Found {len(inputs)} input elements')
+            
+            for i, inp in enumerate(inputs):
+                input_id = inp.get_attribute('id')
+                input_type = inp.get_attribute('type')
+                input_name = inp.get_attribute('name')
+                print(f'Input {i}: id={input_id}, type={input_type}, name={input_name}')
+            
+            # Проверяем есть ли нужные элементы
+            username_found = any(inp.get_attribute('id') == 'username' for inp in inputs)
+            password_found = any(inp.get_attribute('id') == 'password' for inp in inputs)
+            
+            print(f'Username field found: {username_found}')
+            print(f'Password field found: {password_found}')
+            
+            if username_found and password_found:
                 print('✅ Login form elements found')
+                
+                # Пробуем заполнить форму
+                username_field = driver.find_element(By.ID, 'username')
+                password_field = driver.find_element(By.ID, 'password')
+                
+                username_field.send_keys('root')
+                password_field.send_keys('0penBmc')
+                print('✅ Form filled successfully')
+                
+                # Пробуем отправить форму
+                password_field.submit()
+                time.sleep(3)
+                print(f'After submit - URL: {driver.current_url}')
+                print(f'After submit - Title: {driver.title}')
+                
             else:
-                print('❌ Login form not found')
-                print(f'Page source snippet: {page_source[:500]}')
+                print('❌ Login form elements not found')
+                print('Page source (first 1000 chars):')
+                print(driver.page_source[:1000])
             
             driver.quit()
-            print('✅ Selenium test passed')
+            print('✅ Selenium test completed')
             
         except Exception as e:
             print(f'❌ Selenium error: {e}')
@@ -114,10 +150,12 @@ pipeline
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         try:
-            # Test the exact endpoint used in Locust tests
+            print('Testing Redfish API endpoints...')
+            
+            # Test 1: Basic Systems endpoint
             response = requests.get('https://127.0.0.1:2443/redfish/v1/Systems/system', 
                                 verify=False, timeout=10, auth=('root', '0penBmc'))
-            print(f'Systems endpoint status: {response.status_code}')
+            print(f'Systems/system endpoint - Status: {response.status_code}')
             
             if response.status_code == 200:
                 data = response.json()
@@ -127,6 +165,16 @@ pipeline
             else:
                 print(f'❌ Redfish Systems endpoint failed: {response.status_code}')
                 print(f'Response: {response.text[:200]}')
+            
+            # Test 2: Root Systems endpoint  
+            response = requests.get('https://127.0.0.1:2443/redfish/v1/Systems', 
+                                verify=False, timeout=10, auth=('root', '0penBmc'))
+            print(f'Systems endpoint - Status: {response.status_code}')
+            
+            # Test 3: Without authentication
+            response = requests.get('https://127.0.0.1:2443/redfish/v1/Systems/system', 
+                                verify=False, timeout=10)
+            print(f'Systems without auth - Status: {response.status_code}')
                 
         except Exception as e:
             print(f'❌ Error: {e}')
