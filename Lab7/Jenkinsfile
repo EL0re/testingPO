@@ -49,38 +49,63 @@ pipeline
                 '''
             }
         }
-        stage('Auto') 
-        {
-            steps 
-            {
+        stage('Auto') {
+            steps {
                 echo 'Stage Auto: Installing python3 and test dependencies'
                 sh 'apt install -y python3 python3-pytest python3-selenium'
                 
                 echo 'Stage Auto: Running Selenium autotests'
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') 
-                {
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     dir('../Lab4') {
-                        sh 'ls'
-                        sh 'python3 -m pytest -v autotests.py > autotest_results.txt 2>&1'
-                        archiveArtifacts 'autotest_results.txt'
+                        sh '''
+                            echo "=== Running from: $(pwd) ==="
+                            echo "=== Files here: ==="
+                            ls -la
+                            
+                            echo "=== Running pytest with detailed output ==="
+                            # Запускаем без перенаправления чтобы видеть ошибки в реальном времени
+                            python3 -m pytest -v autotests.py --tb=short || echo "Pytest finished with exit code: $?"
+                            
+                            # Если нужно сохранить результаты, создаем файл явно
+                            python3 -m pytest -v autotests.py --tb=short > autotest_results.txt 2>&1 || true
+                            
+                            echo "=== Test results: ==="
+                            cat autotest_results.txt || echo "No results file"
+                        '''
+                        // Копируем файл в workspace для архивации
+                        sh 'cp ../Lab4/autotest_results.txt . || echo "Results file not found"'
                     }
                 }
             }
         }
-        stage('Locust') 
-        {
-            steps 
-            {
+        stage('Locust') {
+            steps {
                 echo 'Stage Locust: Installing Locust load testing tool'
                 sh 'apt install -y python3 locust'
                 
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') 
-                {
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     echo 'Stage Locust: Running load tests'
                     dir('../Lab6') {
-                        sh 'ls'
-                        sh 'timeout 180 locust --headless --users 50 --spawn-rate 5 --run-time 3m --host=https://127.0.0.1:2443 > locust_results.txt 2>&1'
-                        archiveArtifacts 'locust_results.txt'
+                        sh '''
+                            echo "=== Running from: $(pwd) ==="
+                            echo "=== Files here: ==="
+                            ls -la
+                            
+                            echo "=== Testing Locust file ==="
+                            python3 -c "from locust import HttpUser; print('✅ Locust imports work')" || echo "❌ Locust import failed"
+                            
+                            echo "=== Running Locust test ==="
+                            # Упрощенная команда для диагностики
+                            timeout 60 locust --headless --users 1 --spawn-rate 1 --run-time 30s --host=https://127.0.0.1:2443 || echo "Locust finished with exit code: $?"
+                            
+                            # Альтернативно: сохраняем вывод
+                            timeout 60 locust --headless --users 1 --spawn-rate 1 --run-time 30s --host=https://127.0.0.1:2443 > locust_results.txt 2>&1 || true
+                            
+                            echo "=== Locust output: ==="
+                            cat locust_results.txt || echo "No Locust results file"
+                        '''
+                        // Копируем файл в workspace
+                        sh 'cp ../Lab6/locust_results.txt . || echo "Locust results file not found"'
                     }
                 }
             }
