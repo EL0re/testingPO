@@ -80,36 +80,6 @@ pipeline
                 }
             }
         }
-        stage('Check Tests') {
-            steps {
-                sh '''
-                    echo "=== Checking Auto test imports ==="
-                    cd Lab4
-                    python3 -c "
-        try:
-            import autotest
-            print('✅ autotest.py imports successfully')
-            print('Available functions:', [f for f in dir(autotest) if not f.startswith('_')])
-        except Exception as e:
-            print(f'❌ Import error: {e}')
-            import traceback
-            traceback.print_exc()
-        "
-
-                    echo "=== Checking Locust imports ==="
-                    cd ../Lab6
-                    python3 -c "
-        try:
-            from locustfile import OpenBMCUser, PublicAPITestUser
-            print('✅ Locust classes import successfully')
-        except Exception as e:
-            print(f'❌ Import error: {e}')
-            import traceback
-            traceback.print_exc()
-        "
-                '''
-            }
-        }
         stage('Stop Qemu') 
         {
             steps 
