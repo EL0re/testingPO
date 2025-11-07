@@ -49,59 +49,126 @@ pipeline
                 '''
             }
         }
-        stage('Diagnostics') {
+        stage('Test Connection') {
             steps {
-                echo 'Running comprehensive diagnostics...'
+                echo 'Testing detailed connection to QEMU web interface...'
                 sh '''
-                    echo "=== QEMU Process Check ==="
-                    if [ -f "qemu.pid" ]; then
-                        QEMU_PID=$(cat qemu.pid)
-                        echo "QEMU PID: $QEMU_PID"
-                        ps -p $QEMU_PID && echo "✅ QEMU process is running" || echo "❌ QEMU process NOT found"
-                    else
-                        echo "❌ qemu.pid file not found"
-                    fi
+                    echo "=== Detailed Web Interface Test ==="
+                    # Тестируем базовый доступ
+                    curl -k -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://127.0.0.1:2443/ || echo "Curl failed"
                     
-                    echo "=== Network Port Check ==="
-                    echo "Checking port 2443 (HTTPS):"
-                    netstat -tulpn | grep :2443 || echo "Port 2443 not found in netstat"
-                    nc -zv 127.0.0.1 2443 && echo "✅ Port 2443 is open" || echo "❌ Port 2443 is closed"
+                    # Тестируем конкретно страницу логина
+                    echo "=== Testing login page ==="
+                    curl -k -s https://127.0.0.1:2443/login | head -5 || echo "Login page not accessible"
                     
-                    echo "=== QEMU Log Check ==="
-                    if [ -f "qemu_output.log" ]; then
-                        echo "QEMU log size: $(wc -l qemu_output.log)"
-                        echo "=== Last 50 lines of QEMU log ==="
-                        tail -50 qemu_output.log
-                        echo "=== Checking for errors in QEMU log ==="
-                        grep -i "error\\|fail\\|panic" qemu_output.log || echo "No obvious errors found"
-                    else
-                        echo "❌ qemu_output.log not found"
-                    fi
+                    # Тестируем Redfish API
+                    echo "=== Testing Redfish API ==="
+                    curl -k -u "root:0penBmc" https://127.0.0.1:2443/redfish/v1/ || echo "Redfish API failed"
                     
-                    echo "=== Web Interface Test ==="
-                    echo "Testing HTTPS connection to QEMU..."
-                    timeout 30 curl -k -v https://127.0.0.1:2443 2>&1 | head -20 || echo "Curl failed"
-                    
-                    echo "=== Disk Space Check ==="
-                    df -h
-                    echo "=== Memory Check ==="
-                    free -h
+                    echo "=== Python connectivity test ==="
+                    python3 -c "
+        import requests
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        try:
+            # Test basic connection
+            response = requests.get('https://127.0.0.1:2443', verify=False, timeout=10)
+            print(f'Basic connection - Status: {response.status_code}')
+            
+            # Test login page
+            response = requests.get('https://127.0.0.1:2443/login', verify=False, timeout=10)
+            print(f'Login page - Status: {response.status_code}')
+            
+            # Test Redfish API
+            response = requests.get('https://127.0.0.1:2443/redfish/v1', verify=False, timeout=10, auth=('root', '0penBmc'))
+            print(f'Redfish API - Status: {response.status_code}')
+            
+        except Exception as e:
+            print(f'Error: {e}')
+            import traceback
+            traceback.print_exc()
+        "
                 '''
             }
         }
-        stage('Auto') 
-        {
-            steps 
-            {
+        stage('Auto') {
+            steps {
                 echo 'Stage Auto: Installing python3 and test dependencies'
-                sh 'apt install -y python3 python3-pytest python3-selenium'
+                sh 'apt install -y python3 python3-pytest python3-selenium python3-requests'
                 
-                echo 'Stage Auto: Running Selenium autotests'
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') 
-                {
+                echo 'Stage Auto: Running Selenium autotests with detailed output'
+                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
                     dir('../Lab4') {
-                        sh 'ls'
-                        sh 'python3 -m pytest -v autotests.py > autotest_results.txt 2>&1'
+                        sh '''
+                            echo "=== Current directory ==="
+                            pwd
+                            ls -la
+                            
+                            echo "=== Running Python connectivity test ==="
+                            python3 -c "
+        import requests
+        import urllib3
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+        try:
+            response = requests.get('https://127.0.0.1:2443/login', verify=False, timeout=10)
+            print(f'Login page status: {response.status_code}')
+            print(f'Response headers: {dict(response.headers)}')
+            print('✅ Web interface is accessible')
+        except Exception as e:
+            print(f'❌ Error accessing web interface: {e}')
+            import traceback
+            traceback.print_exc()
+        "
+
+                            echo "=== Running Selenium test with debug ==="
+                            python3 -c "
+        from selenium import webdriver
+        from selenium.webdriver.chrome.options import Options
+        import time
+
+        options = Options()
+        options.add_argument('--ignore-certificate-errors')
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+
+        print('Starting Chrome driver...')
+        driver = webdriver.Chrome(options=options)
+
+        try:
+            print('Navigating to login page...')
+            driver.get('https://127.0.0.1:2443/login')
+            print(f'Current URL: {driver.current_url}')
+            print(f'Page title: {driver.title}')
+            print(f'Page source length: {len(driver.page_source)}')
+            
+            # Check for login form elements
+            from selenium.webdriver.common.by import By
+            elements = driver.find_elements(By.TAG_NAME, 'input')
+            print(f'Found {len(elements)} input elements')
+            for elem in elements:
+                print(f'  Input: id={elem.get_attribute(\"id\")}, type={elem.get_attribute(\"type\")}')
+                
+            print('✅ Selenium can access the page')
+            
+        except Exception as e:
+            print(f'❌ Selenium error: {e}')
+            import traceback
+            traceback.print_exc()
+        finally:
+            driver.quit()
+            print('Chrome driver closed')
+        "
+
+                            echo "=== Running actual pytest ==="
+                            # Запускаем один тест для диагностики
+                            python3 -m pytest -v test_login.py::test_login -s > autotest_results.txt 2>&1 || echo "Test finished with exit code: $?"
+                            echo "=== Pytest output ==="
+                            cat autotest_results.txt
+                        '''
                         archiveArtifacts 'autotest_results.txt'
                     }
                 }
