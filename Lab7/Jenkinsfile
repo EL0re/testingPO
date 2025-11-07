@@ -11,8 +11,7 @@ pipeline
                 sh 'rm -rf romulus romulus.zip'
                 
                 echo 'Stage Qemu: Updating packages and installing dependencies'
-                sh 'apt update'
-                sh 'apt install -y qemu-system wget unzip expect'
+                sh 'apt update && apt install -y qemu-system wget unzip'
                 
                 echo 'Stage Qemu: Downloading romulus.zip'
                 sh 'wget https://jenkins.openbmc.org/job/ci-openbmc/lastSuccessfulBuild/distro=ubuntu,label=docker-builder,target=romulus/artifact/openbmc/build/tmp/deploy/images/romulus/*zip*/romulus.zip'
@@ -20,19 +19,33 @@ pipeline
                 
                 echo 'Stage Qemu: Starting QEMU emulator'
                 sh ''' 
-                LATEST_MTD=$(ls romulus/obmc-phosphor-image-romulus-*.static.mtd | sort -V | tail -1)
-                expect -c "
-                log_file -a qemu_result.txt
-                spawn qemu-system-arm -m 256 -M romulus-bmc -nographic -drive file=$LATEST_MTD,format=raw,if=mtd -net nic -net user,hostfwd=:0.0.0.0:2222-:22,hostfwd=:0.0.0.0:2443-:443,hostfwd=udp:0.0.0.0:2623-:623,hostname=qemu
-                sleep 300
-                send \"root\r\"
-                sleep 4
-                send \"0penBmc\r\"
-                expect \"root@romulus:\"
-                interact" &
-                QEMU_PID=$!
-                echo "QEMU started with PID: $QEMU_PID"
-                echo $QEMU_PID > qemu.pid
+                    LATEST_MTD=$(ls romulus/obmc-phosphor-image-romulus-*.static.mtd | sort -V | tail -1)
+                    echo "Using MTD file: $LATEST_MTD"
+                    
+                    qemu-system-arm \
+                        -m 256 \
+                        -M romulus-bmc \
+                        -nographic \
+                        -drive file=$LATEST_MTD,format=raw,if=mtd \
+                        -net nic \
+                        -net user,hostfwd=:0.0.0.0:2222-:22,hostfwd=:0.0.0.0:2443-:443,hostfwd=udp:0.0.0.0:2623-:623 \
+                        > qemu_output.log 2>&1 &
+                        
+                    QEMU_PID=$!
+                    echo "QEMU started with PID: $QEMU_PID"
+                    echo $QEMU_PID > qemu.pid
+                    
+                    echo "Waiting for QEMU to boot..."
+                    sleep 180
+                    
+                    if ps -p $QEMU_PID > /dev/null; then
+                        echo "QEMU is running successfully"
+                    else
+                        echo "ERROR: QEMU process died"
+                        echo "QEMU output:"
+                        cat qemu_output.log
+                        exit 1
+                    fi
                 '''
             }
         }
