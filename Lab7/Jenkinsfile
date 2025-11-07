@@ -49,44 +49,54 @@ pipeline
                 '''
             }
         }
-        stage('Auto') 
-        {
-            steps 
-            {
-                echo 'Stage Auto: Running Selenium autotests'
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') 
-                {
-                    dir('../Lab4') 
-                    {
-                        sh '''
-                            echo "=== Running autotest.py ==="
-                            python3 -m pytest -v autotest.py --tb=short > autotest_results.txt 2>&1 || echo "Tests completed"
-                            echo "=== Test results ==="
-                            cat autotest_results.txt
-                        '''
-                        archiveArtifacts 'autotest_results.txt'
-                    }
-                }
+        stage('Debug File Structure') {
+            steps {
+                sh '''
+                    echo "=== Complete Workspace Structure ==="
+                    pwd
+                    echo "--- Root workspace ---"
+                    ls -la
+                    echo "--- Searching for test files recursively ---"
+                    find . -name "*.py" -type f | head -20
+                    echo "--- Lab directories ---"
+                    ls -la Lab*/ || echo "No Lab directories"
+                    echo "--- All directories ---"
+                    ls -la */ || echo "No subdirectories"
+                '''
             }
         }
-        stage('Locust') 
-        {
-            steps 
-            {
-                catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') 
-                {
-                    echo 'Stage Locust: Running load tests'
-                    dir('../Lab6') 
-                    {
-                        sh '''
-                            echo "=== Running locustfile.py ==="
-                            timeout 60 locust --headless --users 1 --spawn-rate 1 --run-time 30s --host=https://127.0.0.1:2443 > locust_results.txt 2>&1 || echo "Locust finished"
-                            echo "=== Locust output ==="
-                            cat locust_results.txt
-                        '''
-                        archiveArtifacts 'locust_results.txt'
-                    }
-                }
+
+        stage('Find Test Files') {
+            steps {
+                sh '''
+                    echo "=== Searching for test files ==="
+                    find . -name "autotest.py" -o -name "locustfile.py" | head -10
+                '''
+            }
+        }
+
+        stage('Auto') {
+            steps {
+                sh '''
+                    # Запускаем из той директории где найден файл
+                    python3 -m pytest -v $(find . -name "autotest.py" -type f | head -1) > autotest_results.txt 2>&1
+                '''
+                archiveArtifacts 'autotest_results.txt'
+            }
+        }
+
+        stage('Locust') {
+            steps {
+                sh '''
+                    LOCUST_FILE=$(find . -name "locustfile.py" -type f | head -1)
+                    if [ -n "$LOCUST_FILE" ]; then
+                        cd $(dirname "$LOCUST_FILE")
+                        timeout 60 locust --headless --users 1 --spawn-rate 1 --run-time 30s --host=https://127.0.0.1:2443 > locust_results.txt 2>&1
+                    else
+                        echo "locustfile.py not found" > locust_results.txt
+                    fi
+                '''
+                archiveArtifacts 'locust_results.txt'
             }
         }
         stage('Stop Qemu') 
